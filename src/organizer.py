@@ -97,8 +97,16 @@ class FileOrganizer:
         try:
             # Generate show folder name with AI parsed info
             show_folder = self._generate_tv_folder_name(show_info, ai_parsed_info)
-            # Always place organized folders in the root scan directory
-            show_dir = os.path.join(root_dir, show_folder)
+            
+            # Create destination path based on country_folder setting
+            if self.country_folder:
+                # Generate country folder name for TV show
+                country_folder_name = self._get_tv_country_folder_name(show_info)
+                # Create path: root_dir/country_folder/show_folder
+                show_dir = os.path.join(root_dir, country_folder_name, show_folder)
+            else:
+                # Create path: root_dir/show_folder (original behavior)
+                show_dir = os.path.join(root_dir, show_folder)
             
             # Group files by season
             season_files = self._group_files_by_season(file_paths)
@@ -601,6 +609,39 @@ class FileOrganizer:
         clean_name = name.replace(' ', '_').replace('&', 'and')
         
         return f"{iso_code}_{clean_name}"
+    
+    def _get_tv_country_folder_name(self, show_info: TVShowInfo) -> str:
+        """Get country folder name from TV show origin countries"""
+        if not show_info.origin_country:
+            return "Unknown_Unknown"
+        
+        # Use the first origin country (ISO code)
+        country_code = show_info.origin_country[0]
+        
+        # Map common country codes to full names
+        country_mapping = {
+            'US': 'US_United_States',
+            'CN': 'CN_China', 
+            'JP': 'JP_Japan',
+            'KR': 'KR_South_Korea',
+            'GB': 'GB_United_Kingdom',
+            'FR': 'FR_France',
+            'DE': 'DE_Germany',
+            'IT': 'IT_Italy',
+            'ES': 'ES_Spain',
+            'CA': 'CA_Canada',
+            'AU': 'AU_Australia',
+            'IN': 'IN_India',
+            'BR': 'BR_Brazil',
+            'MX': 'MX_Mexico',
+            'RU': 'RU_Russia',
+            'TW': 'TW_Taiwan',
+            'HK': 'HK_Hong_Kong',
+            'TH': 'TH_Thailand',
+            'SG': 'SG_Singapore'
+        }
+        
+        return country_mapping.get(country_code, f"{country_code}_{country_code}")  # Fallback to ISO_ISO format
     
     def _is_country_folder(self, folder_name: str) -> bool:
         """Check if folder name matches country folder pattern (XX_Country_Name)"""

@@ -258,7 +258,8 @@ class TMDBMatcher:
             poster_path=data.get('poster_path'),
             imdb_id=None,  # Will be filled by detailed API call
             tmdb_id=str(data.get('id')),
-            created_by=[]  # Need separate API call for creators
+            created_by=[],  # Need separate API call for creators
+            origin_country=data.get('origin_country', [])  # Get origin country from initial search
         )
     
     def _get_movie_details(self, movie_id: int) -> Optional[Dict[str, Any]]:

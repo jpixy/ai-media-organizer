@@ -56,6 +56,7 @@ class TVShowInfo:
     imdb_id: Optional[str]
     tmdb_id: str
     created_by: List[str] = None
+    origin_country: List[str] = None
 
 @dataclass
 class SeasonInfo:
