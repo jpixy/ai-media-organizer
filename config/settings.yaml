@@ -1,0 +1,58 @@
+api:
+  tmdb_base_url: "https://api.themoviedb.org/3"
+  local_ai_url: "http://localhost:11434"
+  timeout: 30
+
+prompts:
+  movie: |
+    分析以下电影文件名，提取电影信息：
+    文件名: {filename}
+    
+    请返回JSON格式：
+    {{
+        "type": "movie",
+        "title": "中文标题",
+        "original_title": "英文标题", 
+        "year": 年份,
+        "confidence": 0.0-1.0
+    }}
+    
+    如果无法确定某个字段，请设为null。confidence表示解析的置信度。
+  
+  tv_show: |
+    分析以下TV剧集文件夹名，提取剧集信息：
+    文件夹名: {filename}
+    
+    请返回JSON格式：
+    {{
+        "type": "tv_show",
+        "title": "中文标题",
+        "original_title": "英文标题", 
+        "year": 年份,
+        "confidence": 0.0-1.0
+    }}
+    
+    重要说明：
+    - title: 中文标题（如：权力的游戏、庆余年等中文名称）
+    - original_title: 英文标题（如：Game of Thrones、Avatar等英文名称）  
+    - 文件夹名可能包含中英文混合，请准确区分
+    - 如果文件夹名像"权力的游戏.Game.of.Thrones"，则"权力的游戏"是中文标题，"Game of Thrones"是英文标题
+    - 这是剧集的总体信息，不是单集信息
+    - 如果无法确定某个字段，请设为null
+
+video:
+  extensions: [".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".rmvb", ".m4v", ".ts", ".mts", ".m2ts", ".3gp", ".ogv", ".vob", ".divx", ".mpeg", ".mpg", ".mxf", ".asf"]
+  sample_patterns: ["sample", "Sample", "SAMPLE"]
+
+subtitle:
+  extensions: [".srt", ".ass", ".ssa", ".sub", ".idx", ".vtt", ".sup", ".pgs"]
+  folder_names: ["subtitle", "subtitles", "subs", "Subtitle", "Subtitles", "Subs", "字幕"]
+
+processing:
+  batch_size: 10
+  max_retries: 3
+  dry_run: false
+
+paths:
+  temp_dir: "./temp"
+  log_dir: "./logs"
