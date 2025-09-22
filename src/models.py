@@ -22,23 +22,12 @@ class ParsedInfo:
     episode: Optional[int] = None
 
 @dataclass
-class VideoInfo:
-    """Video technical information"""
-    resolution: str
-    format: str
-    codec: str
-    bit_depth: str
-    audio_codec: str
-    audio_channels: str
-
-@dataclass
 class MediaFile:
     """Media file information"""
     path: str
     name: str
     media_type: MediaType
     parsed_info: Optional[ParsedInfo] = None
-    video_info: Optional[VideoInfo] = None
 
 @dataclass
 class MovieInfo:

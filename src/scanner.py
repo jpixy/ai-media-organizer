@@ -11,7 +11,7 @@ from typing import List, Optional
 from pathlib import Path
 from datetime import datetime
 
-from .models import MediaFile, MediaType, ParsedInfo, VideoInfo
+from .models import MediaFile, MediaType, ParsedInfo
 
 logger = logging.getLogger(__name__)
 
@@ -138,18 +138,6 @@ class MediaScanner:
         
         return None
     
-    def analyze_video(self, file_path: str) -> Optional[VideoInfo]:
-        """Analyze video file properties using ffprobe"""
-        # TODO: Implement ffprobe integration
-        logger.debug(f"Analyzing video: {file_path}")
-        return VideoInfo(
-            resolution="1080p",
-            format="mkv",
-            codec="x264",
-            bit_depth="8",
-            audio_codec="AAC",
-            audio_channels="5.1"
-        )
     
     def _is_video_file(self, filename: str) -> bool:
         """Check if file is a video file"""
