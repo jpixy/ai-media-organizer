@@ -109,6 +109,11 @@ def main(path, dry_run, type, verbose, country_folder):
             
             for folder_name, file_paths in tv_folders.items():
                 try:
+                    # Skip country folders - they contain organized content, not source files
+                    if scanner._is_country_folder(folder_name):
+                        click.echo(f"Skipping country folder: {folder_name}")
+                        continue
+                    
                     click.echo(f"Processing TV show folder: {folder_name}")
                     
                     # Parse folder name with AI

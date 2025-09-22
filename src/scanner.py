@@ -57,6 +57,13 @@ class MediaScanner:
                 dirs.clear()  # Don't recurse into organized folders
                 continue
             
+            # Skip country folders when country_folder is enabled
+            folder_name = os.path.basename(root)
+            if self._is_country_folder(folder_name):
+                logger.info(f"Skipping country folder: {root}")
+                # Don't clear dirs here, we want to recurse into country folders to find organized content
+                continue
+            
             for file in files:
                 if self._is_video_file(file) and not self._is_sample_file(file):
                     file_path = os.path.join(root, file)
@@ -322,3 +329,11 @@ class MediaScanner:
             r'^\[.*\]-\[.*\]-(tt\d+|unknown)-\d+$',          # TV show pattern
         ]
         return any(re.match(pattern, folder_name) for pattern in patterns)
+    
+    def _is_country_folder(self, folder_name: str) -> bool:
+        """Check if folder name matches country folder pattern (XX_Country_Name)"""
+        import re
+        # Pattern: ISO code (2-3 letters) + underscore + country name
+        # Examples: CN_China, US_United_States, AL_AL, etc.
+        pattern = r'^[A-Z]{2,3}_[A-Za-z_]+$'
+        return bool(re.match(pattern, folder_name))
