@@ -1,7 +1,9 @@
 api:
   tmdb_base_url: "https://api.themoviedb.org/3"
-  local_ai_url: "http://localhost:11434"
-  timeout: 30
+  local_ai_url: "http://10.176.202.207.nip.io"
+  # local_ai_url: "http://10.176.202.207:11434"
+  timeout: 60
+  ai_model: "qwen2.5:7b"  # 可选: qwen2.5:32b, qwen2.5:72b
 
 prompts:
   movie: |

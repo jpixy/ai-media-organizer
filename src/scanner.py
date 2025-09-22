@@ -24,6 +24,7 @@ class MediaScanner:
         self.sample_patterns = config['video']['sample_patterns']
         self.local_ai_url = config['api']['local_ai_url']
         self.timeout = config['api']['timeout']
+        self.ai_model = config['api'].get('ai_model', 'qwen2.5:32b')  # 默认使用32B模型
         
         # Create logs directory if needed
         os.makedirs('logs', exist_ok=True)
@@ -226,12 +227,13 @@ class MediaScanner:
         try:
             # Use Ollama API directly
             payload = {
-                "model": "qwen2.5:7b", 
+                "model": self.ai_model, 
                 "prompt": prompt,
                 "stream": False
             }
             response = requests.post(
-                f"{self.local_ai_url.replace(':8080', ':11434')}/api/generate",
+                f"{self.local_ai_url}/api/generate",
+                # f"{self.local_ai_url.replace(':8080', ':11434')}/api/generate",
                 json=payload,
                 timeout=self.timeout
             )
