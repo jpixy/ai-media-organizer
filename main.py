@@ -23,8 +23,9 @@ load_dotenv()
 @click.option('--dry-run', is_flag=True, help='Preview mode, do not actually move files')
 @click.option('--type', type=click.Choice(['movie', 'tv']), required=True, help='Media type to process')
 @click.option('--verbose', '-v', is_flag=True, help='Enable verbose output')
+@click.option('--country-folder', is_flag=True, help='Organize movies into country-based folders (e.g., US_United_States)')
 @click.version_option(version='1.0.0')
-def main(path, dry_run, type, verbose):
+def main(path, dry_run, type, verbose, country_folder):
     """Organize media files in the specified directory"""
     try:
         # Setup logging
@@ -34,6 +35,7 @@ def main(path, dry_run, type, verbose):
         # Load configuration
         config = load_config()
         config['processing']['dry_run'] = dry_run
+        config['processing']['country_folder'] = country_folder
         
         click.echo(f"Starting media organization for: {path}")
         click.echo(f"Mode: {'DRY RUN' if dry_run else 'LIVE'}")

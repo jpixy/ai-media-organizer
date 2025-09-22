@@ -42,6 +42,7 @@ class MovieInfo:
     tmdb_id: str
     director: Optional[str] = None
     cast: List[str] = None
+    production_countries: List[Dict[str, str]] = None
 
 @dataclass
 class TVShowInfo:

@@ -19,15 +19,24 @@ class FileOrganizer:
     def __init__(self, config: dict):
         self.config = config
         self.dry_run = config['processing']['dry_run']
+        self.country_folder = config['processing'].get('country_folder', False)
         self.operations: List[FileOperation] = []
     
     def organize_movie(self, movie_info: MovieInfo, source_path: str, root_dir: str, ai_parsed_info=None) -> bool:
         """Organize movie file"""
         try:
-            # Generate folder name
+            # Generate movie folder name
             folder_name = self._generate_movie_folder_name(movie_info, ai_parsed_info)
-            # Always place organized folders in the root scan directory
-            dest_dir = os.path.join(root_dir, folder_name)
+            
+            # Create destination path based on country_folder setting
+            if self.country_folder:
+                # Generate country folder name
+                country_folder_name = self._get_country_folder_name(movie_info)
+                # Create path: root_dir/country_folder/movie_folder
+                dest_dir = os.path.join(root_dir, country_folder_name, folder_name)
+            else:
+                # Create path: root_dir/movie_folder (original behavior)
+                dest_dir = os.path.join(root_dir, folder_name)
             
             # Generate file name (need video info for full name)
             file_name = self._generate_movie_file_name(movie_info, source_path, ai_parsed_info)
@@ -148,6 +157,10 @@ class FileOrganizer:
                 
                 # Skip organized folders (check naming pattern)
                 if self._is_organized_folder(item):
+                    continue
+                
+                # Skip country folders when country_folder is enabled
+                if self.country_folder and self._is_country_folder(item):
                     continue
                 
                 dest_path = os.path.join(unwanted_dir, item)
@@ -380,6 +393,28 @@ class FileOrganizer:
             if '\u4e00' <= char <= '\u9fff' or '\u3400' <= char <= '\u4dbf':
                 return True
         return False
+    
+    def _get_country_folder_name(self, movie_info: MovieInfo) -> str:
+        """Get country folder name from movie production countries"""
+        if not movie_info.production_countries:
+            return "Unknown_Unknown"
+        
+        # Use the first production country
+        country = movie_info.production_countries[0]
+        iso_code = country.get('iso_3166_1', 'Unknown')
+        name = country.get('name', 'Unknown')
+        
+        # Clean up the name (remove spaces and special characters)
+        clean_name = name.replace(' ', '_').replace('&', 'and')
+        
+        return f"{iso_code}_{clean_name}"
+    
+    def _is_country_folder(self, folder_name: str) -> bool:
+        """Check if folder name matches country folder pattern (XX_Country_Name)"""
+        import re
+        # Pattern: ISO code (2-3 letters) + underscore + country name
+        pattern = r'^[A-Z]{2,3}_[A-Za-z_]+$'
+        return bool(re.match(pattern, folder_name))
     
     def _generate_movie_file_name(self, movie_info: MovieInfo, source_path: str, ai_parsed_info=None) -> str:
         """Generate movie file name with video info extracted from original filename"""

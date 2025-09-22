@@ -61,7 +61,7 @@ class TMDBMatcher:
         
         if movie_data:
             movie_info = self._parse_movie_data(movie_data)
-            # Get detailed info including IMDB ID and alternative titles
+            # Get detailed info including IMDB ID, alternative titles, and production countries
             detailed_info = self._get_movie_details(movie_info.id)
             if detailed_info:
                 # Set IMDB ID
@@ -70,6 +70,12 @@ class TMDBMatcher:
                     movie_info.imdb_id = imdb_id
                 else:
                     logger.warning(f"No IMDB ID found for movie {movie_info.title} (TMDB ID: {movie_info.id})")
+                
+                # Set production countries from detailed info
+                production_countries = detailed_info.get('production_countries', [])
+                if production_countries:
+                    movie_info.production_countries = production_countries
+                    logger.info(f"Found {len(production_countries)} production countries for {movie_info.title}")
                 
                 # Enhance movie info with alternative titles
                 self._enhance_movie_with_alternative_titles(movie_info, detailed_info)
@@ -211,7 +217,8 @@ class TMDBMatcher:
             imdb_id=None,  # Need separate API call for IMDB ID
             tmdb_id=str(data.get('id')),
             director=None,  # Need separate API call for credits
-            cast=[]  # Need separate API call for credits
+            cast=[],  # Need separate API call for credits
+            production_countries=data.get('production_countries', [])  # Will be enhanced with detailed API call
         )
     
     def _parse_tv_data(self, data: Dict[str, Any]) -> TVShowInfo:
@@ -229,7 +236,7 @@ class TMDBMatcher:
         )
     
     def _get_movie_details(self, movie_id: int) -> Optional[Dict[str, Any]]:
-        """Get detailed movie information including IMDB ID and alternative titles"""
+        """Get detailed movie information including IMDB ID, alternative titles, and production countries"""
         try:
             url = f"{self.base_url}/movie/{movie_id}"
             params = {
@@ -310,3 +317,18 @@ class TMDBMatcher:
             if '\u4e00' <= char <= '\u9fff' or '\u3400' <= char <= '\u4dbf':
                 return True
         return False
+    
+    def get_country_folder_name(self, movie_info: MovieInfo) -> str:
+        """Get country folder name from movie production countries"""
+        if not movie_info.production_countries:
+            return "Unknown_Unknown"
+        
+        # Use the first production country
+        country = movie_info.production_countries[0]
+        iso_code = country.get('iso_3166_1', 'Unknown')
+        name = country.get('name', 'Unknown')
+        
+        # Clean up the name (remove spaces and special characters)
+        clean_name = name.replace(' ', '_').replace('&', 'and')
+        
+        return f"{iso_code}_{clean_name}"
