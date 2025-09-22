@@ -96,14 +96,16 @@ def main(path, dry_run, type, verbose, country_folder):
                     unmatched_files.append(media_file.path)
         
         else:
-            # Process TV shows by folder
+            # Process TV shows by folder - group by root TV show directory
             tv_folders = {}
             for media_file in media_files:
-                folder_path = os.path.dirname(media_file.path)
-                folder_name = os.path.basename(folder_path)
-                if folder_name not in tv_folders:
-                    tv_folders[folder_name] = []
-                tv_folders[folder_name].append(media_file.path)
+                # Find the root TV show folder (first level under scan path)
+                relative_path = os.path.relpath(media_file.path, path)
+                root_folder = relative_path.split(os.sep)[0]
+                
+                if root_folder not in tv_folders:
+                    tv_folders[root_folder] = []
+                tv_folders[root_folder].append(media_file.path)
             
             for folder_name, file_paths in tv_folders.items():
                 try:
@@ -118,7 +120,7 @@ def main(path, dry_run, type, verbose, country_folder):
                     # Match with TMDB
                     tmdb_info = matcher.search_tv_show(parsed_info.title, parsed_info.year)
                     if tmdb_info:
-                        success = organizer.organize_tv_show(tmdb_info, file_paths[0], path)  # Pass first file as reference
+                        success = organizer.organize_tv_show(tmdb_info, file_paths, path, matcher, parsed_info)  # Pass matcher and AI parsed info
                         if success:
                             processed_count += len(file_paths)
                         else:

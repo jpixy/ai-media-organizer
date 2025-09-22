@@ -60,6 +60,8 @@ class TVShowInfo:
 @dataclass
 class SeasonInfo:
     """Season information from TMDB"""
+    id: int
+    name: str
     season_number: int
     air_date: str
     overview: str

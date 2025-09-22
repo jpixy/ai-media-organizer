@@ -92,30 +92,66 @@ class FileOrganizer:
             logger.error(f"Failed to organize movie {source_path}: {e}")
             return False
     
-    def organize_tv_show(self, show_info: TVShowInfo, source_path: str, root_dir: str) -> bool:
+    def organize_tv_show(self, show_info: TVShowInfo, file_paths: List[str], root_dir: str, matcher=None, ai_parsed_info=None) -> bool:
         """Organize TV show files"""
         try:
-            # Generate show folder name
-            show_folder = self._generate_tv_folder_name(show_info)
+            # Generate show folder name with AI parsed info
+            show_folder = self._generate_tv_folder_name(show_info, ai_parsed_info)
             # Always place organized folders in the root scan directory
             show_dir = os.path.join(root_dir, show_folder)
             
             # Group files by season
-            season_files = self._group_files_by_season(source_path)
+            season_files = self._group_files_by_season(file_paths)
             
             for season_num, files in season_files.items():
-                # TODO: Get season info from TMDB
-                season_year = 2020  # Placeholder
+                # Get real season info from TMDB
+                season_year = show_info.first_air_date[:4] if show_info.first_air_date else "Unknown"
+                
+                if matcher:
+                    season_info = matcher.get_season_info(show_info.id, season_num)
+                    if season_info and season_info.air_date:
+                        season_year = season_info.air_date[:4]
+                        logger.info(f"Got season {season_num} air date: {season_year}")
+                    else:
+                        logger.warning(f"Could not get season {season_num} info, using show's first air date: {season_year}")
+                
                 season_folder = f"S{season_num:02d}-{season_year}"
                 season_dir = os.path.join(show_dir, season_folder)
                 
                 # Batch rename episodes
                 self._batch_rename_episodes(files, season_dir, show_info, season_num)
+                
+                # Generate season NFO and poster if not in dry run mode
+                if not self.dry_run:
+                    if matcher:
+                        season_info = matcher.get_season_info(show_info.id, season_num)
+                        if season_info:
+                            # Generate season NFO
+                            season_nfo_path = os.path.join(season_dir, 'season.nfo')
+                            if not os.path.exists(season_nfo_path):
+                                self.generate_season_nfo(show_info, season_info, season_nfo_path)
+                            else:
+                                logger.info(f"Season NFO already exists: {season_nfo_path}")
+                            
+                            # Download season poster
+                            season_poster_path = os.path.join(season_dir, 'poster.jpg')
+                            if not os.path.exists(season_poster_path):
+                                matcher.download_season_poster(show_info.id, season_num, season_poster_path)
+                            else:
+                                logger.info(f"Season poster already exists: {season_poster_path}")
+                        else:
+                            logger.warning(f"Could not get season {season_num} info for NFO/poster generation")
+                else:
+                    # Dry run mode
+                    season_nfo_path = os.path.join(season_dir, 'season.nfo')
+                    season_poster_path = os.path.join(season_dir, 'poster.jpg')
+                    logger.info(f"DRY RUN: Would generate season NFO: {season_nfo_path}")
+                    logger.info(f"DRY RUN: Would download season poster: {season_poster_path}")
             
             return True
             
         except Exception as e:
-            logger.error(f"Failed to organize TV show {source_path}: {e}")
+            logger.error(f"Failed to organize TV show {', '.join(file_paths)}: {e}")
             return False
     
     def move_to_unmatched(self, file_path: str) -> bool:
@@ -203,6 +239,25 @@ class FileOrganizer:
             logger.error(f"Failed to generate NFO file {output_path}: {e}")
             return False
     
+    def generate_season_nfo(self, show_info: TVShowInfo, season_info: 'SeasonInfo', output_path: str) -> bool:
+        """Generate KODI-compatible season NFO file"""
+        try:
+            nfo_content = self._generate_season_nfo_content(show_info, season_info)
+            
+            if self.dry_run:
+                logger.info(f"DRY RUN: Would generate season NFO: {output_path}")
+                return True
+            else:
+                os.makedirs(os.path.dirname(output_path), exist_ok=True)
+                with open(output_path, 'w', encoding='utf-8') as f:
+                    f.write(nfo_content)
+                logger.info(f"Generated season NFO file: {output_path}")
+                return True
+                
+        except Exception as e:
+            logger.error(f"Failed to generate season NFO file {output_path}: {e}")
+            return False
+    
     def _generate_movie_nfo_content(self, movie_info: MovieInfo) -> str:
         """Generate KODI-compatible movie NFO content"""
         # Get additional details from TMDB
@@ -285,6 +340,108 @@ class FileOrganizer:
         nfo_lines.append('</movie>')
         return '\n'.join(nfo_lines)
     
+    def _generate_season_nfo_content(self, show_info: TVShowInfo, season_info: 'SeasonInfo') -> str:
+        """Generate KODI-compatible season NFO content with rich information"""
+        nfo_lines = ['<?xml version="1.0" encoding="UTF-8" standalone="yes"?>', '<season>']
+        
+        # Basic information
+        nfo_lines.append(f'  <title>{self._escape_xml(season_info.name or f"Season {season_info.season_number}")}</title>')
+        nfo_lines.append(f'  <showtitle>{self._escape_xml(show_info.name or "")}</showtitle>')
+        nfo_lines.append(f'  <originaltitle>{self._escape_xml(show_info.original_name or "")}</originaltitle>')
+        nfo_lines.append(f'  <season>{season_info.season_number}</season>')
+        
+        # Season overview and plot
+        if season_info.overview:
+            nfo_lines.append(f'  <plot>{self._escape_xml(season_info.overview)}</plot>')
+            nfo_lines.append(f'  <outline>{self._escape_xml(season_info.overview[:200] + "..." if len(season_info.overview) > 200 else season_info.overview)}</outline>')
+        elif show_info.overview:
+            # Fallback to show overview if no season-specific overview
+            nfo_lines.append(f'  <plot>{self._escape_xml(show_info.overview)}</plot>')
+            nfo_lines.append(f'  <outline>{self._escape_xml(show_info.overview[:200] + "..." if len(show_info.overview) > 200 else show_info.overview)}</outline>')
+        
+        # Air date and year
+        if season_info.air_date:
+            nfo_lines.append(f'  <premiered>{season_info.air_date}</premiered>')
+            nfo_lines.append(f'  <releasedate>{season_info.air_date}</releasedate>')
+            year = season_info.air_date[:4] if season_info.air_date else ""
+            if year:
+                nfo_lines.append(f'  <year>{year}</year>')
+        elif show_info.first_air_date:
+            # Fallback to show first air date
+            nfo_lines.append(f'  <premiered>{show_info.first_air_date}</premiered>')
+            year = show_info.first_air_date[:4] if show_info.first_air_date else ""
+            if year:
+                nfo_lines.append(f'  <year>{year}</year>')
+        
+        # Episode count
+        nfo_lines.append(f'  <episodecount>{season_info.episode_count}</episodecount>')
+        
+        # Show IDs
+        if show_info.imdb_id:
+            nfo_lines.append(f'  <id>{show_info.imdb_id}</id>')
+            nfo_lines.append(f'  <imdb>{show_info.imdb_id}</imdb>')
+        if show_info.tmdb_id:
+            nfo_lines.append(f'  <tmdbid>{show_info.tmdb_id}</tmdbid>')
+        
+        # Get additional show details for enhanced information
+        show_details = self._get_additional_tv_info(show_info.id)
+        if show_details:
+            # Rating and votes
+            if show_details.get('vote_average'):
+                nfo_lines.append(f'  <rating>{show_details["vote_average"]}</rating>')
+                nfo_lines.append(f'  <votes>{show_details.get("vote_count", 0)}</votes>')
+            
+            # Genres
+            if show_details.get('genres'):
+                for genre in show_details['genres']:
+                    nfo_lines.append(f'  <genre>{self._escape_xml(genre["name"])}</genre>')
+            
+            # Networks/Studios
+            if show_details.get('networks'):
+                for network in show_details['networks']:
+                    nfo_lines.append(f'  <studio>{self._escape_xml(network["name"])}</studio>')
+            
+            # Production companies
+            if show_details.get('production_companies'):
+                for company in show_details['production_companies']:
+                    nfo_lines.append(f'  <studio>{self._escape_xml(company["name"])}</studio>')
+            
+            # Countries
+            if show_details.get('origin_country'):
+                countries = ", ".join(show_details['origin_country'])
+                nfo_lines.append(f'  <country>{self._escape_xml(countries)}</country>')
+            
+            # Status
+            if show_details.get('status'):
+                nfo_lines.append(f'  <status>{self._escape_xml(show_details["status"])}</status>')
+            
+            # Creators
+            if show_details.get('created_by'):
+                for creator in show_details['created_by']:
+                    nfo_lines.append(f'  <director>{self._escape_xml(creator["name"])}</director>')
+        
+        # Get cast and crew information
+        credits = self._get_tv_credits(show_info.id)
+        if credits:
+            # Cast - limit to top 20 actors
+            for actor in credits.get('cast', [])[:20]:
+                nfo_lines.append('  <actor>')
+                nfo_lines.append(f'    <name>{self._escape_xml(actor["name"])}</name>')
+                nfo_lines.append(f'    <role>{self._escape_xml(actor.get("character", ""))}</role>')
+                if actor.get('profile_path'):
+                    nfo_lines.append(f'    <thumb>https://image.tmdb.org/t/p/w500{actor["profile_path"]}</thumb>')
+                nfo_lines.append('  </actor>')
+        
+        # Season poster and fanart
+        if season_info.poster_path:
+            nfo_lines.append(f'  <thumb>https://image.tmdb.org/t/p/w500{season_info.poster_path}</thumb>')
+            nfo_lines.append(f'  <fanart>')
+            nfo_lines.append(f'    <thumb>https://image.tmdb.org/t/p/original{season_info.poster_path}</thumb>')
+            nfo_lines.append(f'  </fanart>')
+        
+        nfo_lines.append('</season>')
+        return '\n'.join(nfo_lines)
+    
     def _escape_xml(self, text: str) -> str:
         """Escape XML special characters"""
         if not text:
@@ -319,6 +476,36 @@ class FileOrganizer:
             
         except Exception as e:
             logger.warning(f"Failed to get movie credits: {e}")
+            return None
+    
+    def _get_additional_tv_info(self, tmdb_id: int) -> Optional[dict]:
+        """Get additional TV show information from TMDB"""
+        try:
+            import requests
+            url = f"https://api.themoviedb.org/3/tv/{tmdb_id}"
+            params = {"api_key": os.getenv('TMDB_API_KEY')}
+            
+            response = requests.get(url, params=params, timeout=30)
+            response.raise_for_status()
+            return response.json()
+            
+        except Exception as e:
+            logger.warning(f"Failed to get additional TV info: {e}")
+            return None
+    
+    def _get_tv_credits(self, tmdb_id: int) -> Optional[dict]:
+        """Get TV show credits (cast and crew) from TMDB"""
+        try:
+            import requests
+            url = f"https://api.themoviedb.org/3/tv/{tmdb_id}/credits"
+            params = {"api_key": os.getenv('TMDB_API_KEY')}
+            
+            response = requests.get(url, params=params, timeout=30)
+            response.raise_for_status()
+            return response.json()
+            
+        except Exception as e:
+            logger.warning(f"Failed to get TV credits: {e}")
             return None
     
     def _download_poster(self, poster_path: str, output_path: str) -> bool:
@@ -378,11 +565,17 @@ class FileOrganizer:
                 second_title = tmdb_title
         
         # Generate folder name
-        if second_title:
-            return f"[{original_title}]-[{second_title}]-{movie_info.year}-{movie_info.imdb_id or 'unknown'}-{movie_info.tmdb_id}"
-        else:
-            # No appropriate second title found, just use original title
-            return f"[{original_title}]-{movie_info.year}-{movie_info.imdb_id or 'unknown'}-{movie_info.tmdb_id}"
+        name_part = f"[{original_title}]-[{second_title}]" if second_title else f"[{original_title}]"
+        
+        # Add year and IDs only if they exist and are not empty/unknown
+        parts = [name_part, str(movie_info.year)]
+        
+        if movie_info.imdb_id and movie_info.imdb_id.strip() and movie_info.imdb_id != 'unknown':
+            parts.append(movie_info.imdb_id)
+        if movie_info.tmdb_id and str(movie_info.tmdb_id).strip():
+            parts.append(str(movie_info.tmdb_id))
+        
+        return "-".join(parts)
     
     def _is_chinese_text(self, text: str) -> bool:
         """Check if text contains Chinese characters"""
@@ -526,44 +719,138 @@ class FileOrganizer:
         except Exception as e:
             logger.warning(f"Failed to remove old metadata files: {e}")
     
-    def _generate_tv_folder_name(self, show_info: TVShowInfo) -> str:
-        """Generate TV show folder name"""
-        if show_info.original_name == show_info.name:
-            return f"[{show_info.name}]-{show_info.imdb_id or 'unknown'}-{show_info.tmdb_id}"
+    def _generate_tv_folder_name(self, show_info: TVShowInfo, ai_parsed_info=None) -> str:
+        """Generate TV show folder name with intelligent Chinese/English title handling"""
+        
+        # Get TMDB titles
+        tmdb_original_name = show_info.original_name or ""
+        tmdb_name = show_info.name or ""
+        
+        # Determine what should be the primary (original) and secondary (localized) titles
+        primary_title = tmdb_original_name
+        secondary_title = ""
+        
+        if self._is_chinese_text(tmdb_original_name):
+            # Original is Chinese, need English title in second position
+            if tmdb_name and not self._is_chinese_text(tmdb_name):
+                secondary_title = tmdb_name
+            elif ai_parsed_info and ai_parsed_info.original_title and not self._is_chinese_text(ai_parsed_info.original_title):
+                secondary_title = ai_parsed_info.original_title
         else:
-            return f"[{show_info.original_name}]-[{show_info.name}]-{show_info.imdb_id or 'unknown'}-{show_info.tmdb_id}"
+            # Original is English/other language, need Chinese title in second position
+            # Try AI parsed Chinese title first
+            if ai_parsed_info and ai_parsed_info.title and self._is_chinese_text(ai_parsed_info.title):
+                secondary_title = ai_parsed_info.title
+            # If no Chinese from AI, check TMDB name
+            elif tmdb_name and tmdb_name != tmdb_original_name and self._is_chinese_text(tmdb_name):
+                secondary_title = tmdb_name
+        
+        # Generate name part
+        if secondary_title:
+            name_part = f"[{primary_title}]-[{secondary_title}]"
+        else:
+            name_part = f"[{primary_title}]"
+        
+        # Add IDs only if they exist and are not empty/unknown
+        id_parts = []
+        if show_info.imdb_id and show_info.imdb_id.strip() and show_info.imdb_id != 'unknown':
+            id_parts.append(show_info.imdb_id)
+        if show_info.tmdb_id and str(show_info.tmdb_id).strip():
+            id_parts.append(str(show_info.tmdb_id))
+        
+        # Combine name and IDs with dashes
+        if id_parts:
+            return f"{name_part}-{'-'.join(id_parts)}"
+        else:
+            return name_part
     
-    def _group_files_by_season(self, source_path: str) -> dict:
+    def _group_files_by_season(self, file_paths: List[str]) -> dict:
         """Group episode files by season number"""
-        # TODO: Implement season grouping logic
-        # For now, return a simple example
-        return {1: [source_path]}
+        season_files = {}
+        
+        for file_path in file_paths:
+            season_num = self._extract_season_number(file_path)
+            if season_num not in season_files:
+                season_files[season_num] = []
+            season_files[season_num].append(file_path)
+        
+        return season_files
+    
+    def _extract_season_number(self, file_path: str) -> int:
+        """Extract season number from file path or filename"""
+        # Check for season patterns in path and filename
+        path_str = str(file_path).lower()
+        
+        # Pattern 1: S01, S02, etc. in path
+        season_match = re.search(r'/s(\d{1,2})/', path_str)
+        if season_match:
+            return int(season_match.group(1))
+        
+        # Pattern 2: Season 1, Season 2, etc. in path  
+        season_match = re.search(r'/season\s*(\d{1,2})/', path_str)
+        if season_match:
+            return int(season_match.group(1))
+        
+        # Pattern 3: S01E01 in filename
+        filename = os.path.basename(file_path).lower()
+        season_match = re.search(r's(\d{1,2})e\d{1,2}', filename)
+        if season_match:
+            return int(season_match.group(1))
+        
+        # Default to season 1 if no pattern found
+        return 1
     
     def _batch_rename_episodes(self, files: List[str], season_dir: str, show_info: TVShowInfo, season_num: int):
         """Batch rename episode files"""
         for file_path in files:
             # Extract episode info from filename
-            episode_info = self._extract_episode_info(os.path.basename(file_path))
-            if episode_info:
-                episode_num = episode_info[1]
-                
-                # Generate episode file name
-                ext = os.path.splitext(file_path)[1]
-                episode_name = f"[{show_info.original_name}]-S{season_num:02d}E{episode_num:02d}-[{show_info.original_name}]-[{show_info.name}]-x264-8bit-AAC-5.1{ext}"
-                
-                dest_path = os.path.join(season_dir, episode_name)
-                operation = FileOperation(
-                    operation_type="move",
-                    source=file_path,
-                    destination=dest_path,
-                    description=f"Rename episode S{season_num:02d}E{episode_num:02d}"
-                )
-                
-                if self.dry_run:
-                    self.operations.append(operation)
-                else:
-                    os.makedirs(season_dir, exist_ok=True)
-                    self._execute_move(operation)
+            episode_num = self._extract_episode_number(file_path)
+            
+            # Generate episode file name
+            ext = os.path.splitext(file_path)[1]
+            original_filename = os.path.basename(file_path)
+            
+            # Extract video info from original filename
+            video_info = self._extract_video_info_from_filename(original_filename)
+            
+            # Format: [原标题]-S01E01-视频信息.mp4 (简化版，只保留原标题)
+            episode_name = f"[{show_info.original_name}]-S{season_num:02d}E{episode_num:02d}-{video_info}{ext}"
+            dest_path = os.path.join(season_dir, episode_name)
+            
+            # Create file operation
+            operation = FileOperation(
+                operation_type="move",
+                source=file_path,
+                destination=dest_path,
+                description=f"Organize episode: S{season_num:02d}E{episode_num:02d}"
+            )
+            
+            if self.dry_run:
+                logger.info(f"DRY RUN: Would move {file_path} -> {dest_path}")
+            else:
+                self._execute_move(operation)
+    
+    def _extract_episode_number(self, file_path: str) -> int:
+        """Extract episode number from filename"""
+        filename = os.path.basename(file_path).lower()
+        
+        # Pattern 1: S01E01 format
+        episode_match = re.search(r's\d{1,2}e(\d{1,2})', filename)
+        if episode_match:
+            return int(episode_match.group(1))
+        
+        # Pattern 2: Simple number format (01.mp4, 02.mp4, etc.)
+        episode_match = re.search(r'^(\d{1,2})\.(mp4|mkv|avi)', filename)
+        if episode_match:
+            return int(episode_match.group(1))
+        
+        # Pattern 3: Episode number in Chinese series (马大帅.S01E01.mp4)
+        episode_match = re.search(r'e(\d{1,2})', filename)
+        if episode_match:
+            return int(episode_match.group(1))
+        
+        # Default to episode 1 if no pattern found
+        return 1
     
     def _extract_episode_info(self, filename: str) -> Optional[tuple]:
         """Extract season and episode info from filename"""
@@ -575,9 +862,14 @@ class FileOrganizer:
         """Check if folder follows organized naming pattern"""
         # Check for organized movie/TV patterns - be more comprehensive
         patterns = [
-            r'^\[.*\]-\[.*\]-\d{4}-(tt\d+|unknown)-\d+$',    # Full movie pattern with IMDB
-            r'^\[.*\]-\d{4}-(tt\d+|unknown)-\d+$',           # Single title movie pattern
-            r'^\[.*\]-\[.*\]-(tt\d+|unknown)-\d+$',          # TV show pattern
+            r'^\[.*\]-\[.*\]-\d{4}-(tt\d+)-\d+$',           # Full movie pattern with IMDB and TMDB
+            r'^\[.*\]-\[.*\]-\d{4}-\d+$',                   # Full movie pattern with TMDB only
+            r'^\[.*\]-\d{4}-(tt\d+)-\d+$',                  # Single title movie pattern with IMDB and TMDB
+            r'^\[.*\]-\d{4}-\d+$',                          # Single title movie pattern with TMDB only
+            r'^\[.*\]-\[.*\]-(tt\d+)-\d+$',                 # TV show pattern with IMDB and TMDB
+            r'^\[.*\]-\[.*\]-\d+$',                         # TV show pattern with TMDB only
+            r'^\[.*\]-(tt\d+)-\d+$',                        # Single title TV show pattern with IMDB and TMDB
+            r'^\[.*\]-\d+$',                                # Single title TV show pattern with TMDB only
         ]
         return any(re.match(pattern, folder_name) for pattern in patterns)
     

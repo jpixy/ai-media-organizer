@@ -123,6 +123,8 @@ class TMDBMatcher:
             
             data = response.json()
             return SeasonInfo(
+                id=data.get('id'),
+                name=data.get('name', f"Season {data.get('season_number', '')}"),
                 season_number=data.get('season_number'),
                 air_date=data.get('air_date', ''),
                 overview=data.get('overview', ''),
@@ -153,6 +155,30 @@ class TMDBMatcher:
             
         except Exception as e:
             logger.error(f"Failed to download poster: {e}")
+            return False
+    
+    def download_season_poster(self, show_id: int, season_number: int, output_path: str) -> bool:
+        """Download season poster image"""
+        try:
+            # Get season info first to get poster path
+            season_info = self.get_season_info(show_id, season_number)
+            if not season_info or not season_info.poster_path:
+                logger.warning(f"No poster found for season {season_number}")
+                return False
+            
+            url = f"https://image.tmdb.org/t/p/w500{season_info.poster_path}"
+            response = requests.get(url, timeout=self.timeout)
+            response.raise_for_status()
+            
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            with open(output_path, 'wb') as f:
+                f.write(response.content)
+            
+            logger.info(f"Downloaded season {season_number} poster: {output_path}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to download season poster: {e}")
             return False
     
     def _search_movie_api(self, query: str, year: int) -> Optional[Dict[str, Any]]:
