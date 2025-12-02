@@ -90,6 +90,45 @@ LOCAL_AI_URL=http://server.nip.io
 - Using local Ollama on default port (11434)
 - The value in `settings.yaml` is already correct
 
+**Setting up Remote Ollama Server:**
+
+If you're running Ollama on a separate machine, you need to configure it to accept remote connections:
+
+```bash
+# On the Ollama server machine:
+
+# Method 1: One-time (temporary)
+OLLAMA_HOST=0.0.0.0:11434 ollama serve
+
+# Method 2: Permanent (systemd)
+sudo mkdir -p /etc/systemd/system/ollama.service.d
+sudo tee /etc/systemd/system/ollama.service.d/override.conf > /dev/null <<EOF
+[Service]
+Environment="OLLAMA_HOST=0.0.0.0:11434"
+EOF
+sudo systemctl daemon-reload
+sudo systemctl restart ollama
+
+# Method 3: Environment variable
+echo 'export OLLAMA_HOST=0.0.0.0:11434' >> ~/.bashrc
+source ~/.bashrc
+ollama serve
+
+# Configure firewall
+sudo firewall-cmd --add-port=11434/tcp --permanent  # Fedora/RHEL
+sudo firewall-cmd --reload
+sudo ufw allow 11434/tcp                             # Ubuntu/Debian
+
+# Verify remote access
+curl http://server-ip:11434/api/version
+```
+
+**Security Considerations:**
+- Ollama has no built-in authentication
+- Only expose to trusted networks
+- Consider using VPN or SSH tunnel for internet access
+- Use firewall rules to restrict access by IP
+
 ## YAML Configuration (`config/settings.yaml`)
 
 ### API Settings
@@ -270,13 +309,88 @@ api:
 
 ### Can't Connect to AI Server
 
-**Problem:** `Connection reset by peer` error.
+**Problem:** `Connection reset by peer` or `Connection refused` error.
 
 **Solutions:**
-1. Check `LOCAL_AI_URL` in `.env` matches your server
-2. Test connection: `curl http://your-server:11434/api/version`
-3. Verify Ollama is running: `ollama serve`
-4. Check firewall settings if using remote server
+
+**Step 1: Verify Ollama is Running**
+```bash
+# Check service status
+sudo systemctl status ollama
+
+# Check process
+ps aux | grep ollama
+
+# Try starting manually
+ollama serve
+```
+
+**Step 2: Check Listening Address**
+```bash
+# See what address Ollama is listening on
+sudo netstat -tlnp | grep 11434
+# or
+sudo ss -tlnp | grep 11434
+
+# Expected output for local only:
+# tcp  0  0  127.0.0.1:11434  0.0.0.0:*  LISTEN
+
+# Expected output for remote access:
+# tcp  0  0  0.0.0.0:11434    0.0.0.0:*  LISTEN
+```
+
+**Step 3: Test Connection**
+```bash
+# Local test
+curl http://localhost:11434/api/version
+
+# Remote test (from client machine)
+curl http://your-server-ip:11434/api/version
+
+# Should return: {"version":"0.x.x"}
+```
+
+**Step 4: Check Firewall (for remote access)**
+```bash
+# Fedora/RHEL/CentOS
+sudo firewall-cmd --list-ports
+sudo firewall-cmd --add-port=11434/tcp --permanent
+sudo firewall-cmd --reload
+
+# Ubuntu/Debian
+sudo ufw status
+sudo ufw allow 11434/tcp
+sudo ufw reload
+
+# Check if port is accessible from outside
+# (run from client machine)
+telnet your-server-ip 11434
+# or
+nc -zv your-server-ip 11434
+```
+
+**Step 5: Verify Configuration**
+```bash
+# Check environment variables
+env | grep OLLAMA
+
+# Check .env file
+cat .env | grep LOCAL_AI_URL
+
+# Verify config/settings.yaml
+cat config/settings.yaml | grep local_ai_url
+```
+
+**Common Issues:**
+
+| Symptom | Cause | Solution |
+|---------|-------|----------|
+| `Connection refused` | Ollama not running | Start with `ollama serve` |
+| `Connection refused` | Wrong port | Verify using port 11434 |
+| `Connection timeout` | Firewall blocking | Open port 11434 |
+| `Connection timeout` | Wrong IP address | Check server IP |
+| Works locally but not remotely | Listening on 127.0.0.1 only | Set `OLLAMA_HOST=0.0.0.0:11434` |
+| Inconsistent behavior | Config mismatch | Check `.env` vs `settings.yaml` |
 
 ### TMDB API Errors
 

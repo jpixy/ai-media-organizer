@@ -28,11 +28,35 @@ Automatically organize movie and TV show files using local AI and TMDB API. This
 # Install Ollama (if not already installed)
 curl -fsSL https://ollama.ai/install.sh | sh
 
-# Start Ollama service
+# Start Ollama service (choose one):
+
+# For LOCAL use only:
 ollama serve
 
+# For REMOTE access (allow connections from other machines):
+OLLAMA_HOST=0.0.0.0:11434 ollama serve
+
 # Pull a language model (in another terminal)
-ollama pull llama3.1:8b
+ollama pull qwen2.5:7b
+```
+
+**Remote Access Setup (Optional):**
+
+If you need to access Ollama from another machine, make it permanent:
+
+```bash
+# For systemd (Linux):
+sudo mkdir -p /etc/systemd/system/ollama.service.d
+sudo tee /etc/systemd/system/ollama.service.d/override.conf > /dev/null <<EOF
+[Service]
+Environment="OLLAMA_HOST=0.0.0.0:11434"
+EOF
+sudo systemctl daemon-reload
+sudo systemctl restart ollama
+
+# Open firewall port:
+sudo firewall-cmd --add-port=11434/tcp --permanent  # Fedora/RHEL
+sudo ufw allow 11434/tcp                             # Ubuntu/Debian
 ```
 
 ### 3. Setup Project
@@ -54,11 +78,19 @@ cp .env.example .env
 Edit `.env` file with your settings:
 
 ```bash
-# Get TMDB API key from: https://www.themoviedb.org/settings/api
+# Required: Get TMDB API key from: https://www.themoviedb.org/settings/api
 TMDB_API_KEY=your_actual_api_key_here
 
-# Verify Ollama is running on correct port
+# Optional: Configure Ollama URL (defaults to localhost:11434)
+# For local Ollama:
 LOCAL_AI_URL=http://localhost:11434
+
+# For remote Ollama server:
+# LOCAL_AI_URL=http://192.168.1.100:11434
+# LOCAL_AI_URL=http://your-server-ip:11434
+
+# For custom domain:
+# LOCAL_AI_URL=http://ai.example.com
 ```
 
 ### 5. Organize Your Media
